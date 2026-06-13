@@ -21,9 +21,9 @@ OLD_FIXURE_BLOCK = (
 )
 
 CATEGORY_MAP = {
-    'CHECKING FIXTURE': ('CHECKING FIXURE', '9031.80'),
-    'PRESS TOOL':       ('PRESS TOOL',      '8207.30'),
-    'JIG':              ('JIG',             '8466.30'),
+    'CHECKING FIXTURE': ('CHECKING FIXURE', '9031.80', 'Design → Machining → Assembly → Measurement'),
+    'PRESS TOOL':       ('PRESS TOOL',      '8207.30', 'Design → 1st Assembly → NC Machining → 2nd Assembly → Spotting → T.O &amp; Sample'),
+    'JIG':              ('JIG',             '8466.30', 'Design → Machining → Assembly → Measurement'),
 }
 
 def get_libreoffice():
@@ -49,14 +49,28 @@ def make_fixure_block(label, hs_code):
         f'<w:t>{label}: {hs_code}</w:t></w:r>'
     )
 
+OLD_PROD_CELL = '<w:tc><w:tcPr><w:tcW w:w="2835" w:type="dxa"/></w:tcPr><w:p w:rsidR="002D27FE" w:rsidRPr="0032543E" w:rsidRDefault="00374ADC" w:rsidP="00767F4F"><w:pPr><w:jc w:val="both"/><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/><w:highlight w:val="yellow"/><w:lang w:eastAsia="ko-KR"/></w:rPr></w:pPr><w:r w:rsidRPr="009A5CBA"><w:rPr><w:rFonts w:hint="eastAsia"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="ko-KR"/></w:rPr><w:t xml:space="preserve">Design </w:t></w:r><w:r w:rsidRPr="009A5CBA"><w:rPr><w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕" w:hint="eastAsia"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>→</w:t></w:r><w:r w:rsidR="00767F4F" w:rsidRPr="009A5CBA"><w:rPr><w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕" w:hint="eastAsia"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="ko-KR"/></w:rPr><w:t xml:space="preserve"> </w:t></w:r><w:r w:rsidRPr="009A5CBA"><w:rPr><w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕" w:hint="eastAsia"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="ko-KR"/></w:rPr><w:t xml:space="preserve">Machining </w:t></w:r><w:r w:rsidRPr="009A5CBA"><w:rPr><w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕" w:hint="eastAsia"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>→</w:t></w:r><w:r w:rsidRPr="009A5CBA"><w:rPr><w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕" w:hint="eastAsia"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="ko-KR"/></w:rPr><w:t xml:space="preserve"> Assembly </w:t></w:r><w:r w:rsidRPr="009A5CBA"><w:rPr><w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕" w:hint="eastAsia"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t>→</w:t></w:r><w:r w:rsidRPr="009A5CBA"><w:rPr><w:rFonts w:ascii="맑은 고딕" w:eastAsia="맑은 고딕" w:hAnsi="맑은 고딕" w:hint="eastAsia"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="ko-KR"/></w:rPr><w:t xml:space="preserve"> Measurement</w:t></w:r></w:p></w:tc>'
+
+def make_prod_cell(text):
+    return (
+        '<w:tc><w:tcPr><w:tcW w:w="2835" w:type="dxa"/></w:tcPr>'
+        '<w:p w:rsidR="002D27FE" w:rsidRPr="0032543E" w:rsidRDefault="00374ADC" w:rsidP="00767F4F">'
+        '<w:pPr><w:jc w:val="both"/><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/>'
+        '<w:lang w:eastAsia="ko-KR"/></w:rPr></w:pPr>'
+        '<w:r><w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:eastAsia="ko-KR"/></w:rPr>'
+        f'<w:t xml:space="preserve">{text}</w:t></w:r>'
+        '</w:p></w:tc>'
+    )
+
 def build_docx(desc, cat):
-    label, hs_code = CATEGORY_MAP.get(cat, ('CHECKING FIXURE', '9031.80'))
+    label, hs_code, prod_process = CATEGORY_MAP.get(cat, ('CHECKING FIXURE', '9031.80', 'Design → Machining → Assembly → Measurement'))
     new_desc_xml = desc.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
     with zipfile.ZipFile(TEMPLATE_PATH, 'r') as z:
         files = {name: z.read(name) for name in z.namelist()}
     xml = files['word/document.xml'].decode('utf-8')
     xml = xml.replace(OLD_DESC, new_desc_xml)
     xml = xml.replace(OLD_FIXURE_BLOCK, make_fixure_block(label, hs_code))
+    xml = xml.replace(OLD_PROD_CELL, make_prod_cell(prod_process))
     files['word/document.xml'] = xml.encode('utf-8')
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zout:
