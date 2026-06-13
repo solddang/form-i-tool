@@ -1,5 +1,5 @@
 from flask import Flask, request, send_file, Response
-import zipfile, io, os, subprocess, tempfile, shutil
+import zipfile, io, os, subprocess, tempfile, shutil, glob
 
 app = Flask(__name__)
 
@@ -26,17 +26,27 @@ CATEGORY_MAP = {
 }
 
 def get_libreoffice():
+    # 1. PATH에서 찾기
     for cmd in ['libreoffice', 'soffice']:
         path = shutil.which(cmd)
         if path:
             return path
-    for root, dirs, files in os.walk('/nix/store'):
-        for f in files:
-            if f in ('libreoffice', 'soffice'):
-                full = os.path.join(root, f)
-                if os.access(full, os.X_OK):
-                    return full
-        dirs[:] = [d for d in dirs if not d.startswith('.')]
+    # 2. 일반 경로
+    for path in ['/usr/bin/libreoffice', '/usr/bin/soffice',
+                 '/usr/local/bin/libreoffice', '/usr/local/bin/soffice',
+                 '/opt/libreoffice/program/soffice']:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    # 3. nix store에서 찾기 (glob으로 빠르게)
+    patterns = [
+        '/nix/store/*/bin/libreoffice',
+        '/nix/store/*/bin/soffice',
+        '/nix/store/*/lib/libreoffice/program/soffice',
+    ]
+    for pattern in patterns:
+        matches = glob.glob(pattern)
+        if matches:
+            return matches[0]
     raise RuntimeError('LibreOffice를 찾을 수 없습니다.')
 
 HTML = """<!DOCTYPE html>
@@ -56,7 +66,6 @@ h1 { font-size: 18px; font-weight: 700; }
 .sub { font-size: 12px; color: #9ca3af; padding-left: 44px; }
 .info-bar { display: flex; flex-wrap: wrap; gap: 6px 18px; background: #f8faff; border: 1px solid #dbeafe; border-radius: 9px; padding: 10px 14px; margin-bottom: 1.5rem; font-size: 12px; color: #6b7280; }
 .info-bar b { color: #1e40af; font-weight: 600; }
-
 .cat-table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 12px; }
 .cat-table th { background: #f1f5f9; color: #475569; font-weight: 600; padding: 7px 12px; border: 1px solid #e4e4e7; text-align: left; }
 .cat-table td { padding: 6px 12px; border: 1px solid #e4e4e7; color: #374151; }
@@ -65,15 +74,12 @@ h1 { font-size: 18px; font-weight: 700; }
 .badge-cf { background: #dbeafe; color: #1e40af; }
 .badge-pt { background: #fef9c3; color: #854d0e; }
 .badge-jig { background: #dcfce7; color: #166534; }
-
 .sample-box { display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 9px; padding: 10px 14px; margin-bottom: 1.5rem; }
 .sample-left { display: flex; align-items: center; gap: 10px; }
-.sample-icon { font-size: 20px; }
 .sample-text { font-size: 13px; color: #166534; font-weight: 500; }
-.sample-hint { font-size: 11px; color: #4ade80; margin-top: 2px; color: #15803d; }
+.sample-hint { font-size: 11px; color: #15803d; margin-top: 2px; }
 .sample-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 12px; font-weight: 600; background: #16a34a; color: #fff; border: none; border-radius: 7px; cursor: pointer; text-decoration: none; }
 .sample-btn:hover { background: #15803d; }
-
 .fmt-row { display: flex; align-items: center; gap: 10px; margin-bottom: 1.25rem; }
 .fmt-label { font-size: 12px; font-weight: 600; color: #6b7280; flex-shrink: 0; }
 .fmt-toggle { display: flex; border: 1px solid #e4e4e7; border-radius: 8px; overflow: hidden; }
@@ -125,12 +131,10 @@ textarea:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1
     </div>
     <div class="sub">HWASHIN CO. LTD. &nbsp;·&nbsp; CEPA 원산지확인서 Section III</div>
   </div>
-
   <div class="info-bar">
     <span>🔒 템플릿 <b>HS2026-05-302P</b></span>
     <span>🔒 기타 항목 고정</span>
   </div>
-
   <table class="cat-table">
     <thead><tr><th>Category</th><th>HS Code</th><th>Part B 상단 자동 적용</th></tr></thead>
     <tbody>
@@ -139,10 +143,9 @@ textarea:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1
       <tr><td><span class="badge-cat badge-jig">JIG</span></td><td>8466.30</td><td>JIG: 8466.30</td></tr>
     </tbody>
   </table>
-
   <div class="sample-box">
     <div class="sample-left">
-      <span class="sample-icon">📥</span>
+      <span style="font-size:20px">📥</span>
       <div>
         <div class="sample-text">엑셀 입력 양식 샘플</div>
         <div class="sample-hint">NO. / Category / Description 형식 — 다운로드 후 작성해서 붙여넣으세요</div>
@@ -150,7 +153,6 @@ textarea:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1
     </div>
     <a href="/sample" download="Form_I_입력양식_샘플.xlsx" class="sample-btn">⬇ 샘플 다운로드</a>
   </div>
-
   <div class="fmt-row">
     <span class="fmt-label">출력 형식</span>
     <div class="fmt-toggle">
@@ -158,7 +160,6 @@ textarea:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1
       <button class="fmt-btn" id="fmt-pdf" onclick="setFmt('pdf')">📕 PDF</button>
     </div>
   </div>
-
   <label class="field-label" for="inp">번호 + Category + 품목 설명 목록</label>
   <textarea id="inp" placeholder="샘플 엑셀에서 NO. / Category / Description 세 열을 복사해서 붙여넣으세요.
 
@@ -167,7 +168,6 @@ textarea:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1
 3	JIG	W15 FRT L/ARM REINF WELDING JIG"></textarea>
   <div class="hint">탭으로 구분된 세 열 (번호 / Category / 품목명) · 엑셀에서 세 열 선택 후 복사 붙여넣기</div>
   <button class="btn btn-parse" onclick="parse()">목록 확인</button>
-
   <div class="preview-wrap" id="preview-wrap">
     <div class="preview-top">
       <span class="preview-title">파싱 결과</span>
@@ -175,7 +175,6 @@ textarea:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1
     </div>
     <div class="preview-list" id="preview-list"></div>
   </div>
-
   <hr class="divider">
   <div class="dl-label">다운로드</div>
   <div class="dl-grid">
@@ -185,7 +184,6 @@ textarea:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1
   <div class="progress" id="prog"><div class="progress-fill" id="prog-fill"></div></div>
   <div class="status" id="status"></div>
 </div>
-
 <script>
 let items = [], fmt = 'docx';
 const CAT_BADGE = {
@@ -209,10 +207,10 @@ function parse() {
       const no = parts[0].trim();
       const cat = parts[1].trim().toUpperCase();
       const desc = parts.slice(2).join('\\t').trim();
-      if (/^\\d+$/.test(no) && ['CHECKING FIXTURE','PRESS TOOL','JIG'].includes(cat) && desc) {
+      if (/^\\d+$/.test(no) && ['CHECKING FIXTURE','PRESS TOOL','JIG'].includes(cat) && desc)
         ok.push({ no: parseInt(no), cat, desc });
-      } else { bad.push(i + 1); }
-    } else { bad.push(i + 1); }
+      else bad.push(i + 1);
+    } else bad.push(i + 1);
   });
   items = ok;
   const wrap=document.getElementById('preview-wrap'), list=document.getElementById('preview-list'), badge=document.getElementById('badge');
@@ -300,13 +298,15 @@ def docx_to_pdf(docx_buf):
             f.write(docx_buf.read())
         env = os.environ.copy()
         env['HOME'] = tmpdir
+        env['TMPDIR'] = tmpdir
         result = subprocess.run(
-            [lo, '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', tmpdir, docx_path],
+            [lo, '--headless', '--norestore', '--nofirststartwizard',
+             '--convert-to', 'pdf', '--outdir', tmpdir, docx_path],
             capture_output=True, timeout=120, env=env
         )
         pdf_path = os.path.join(tmpdir, 'input.pdf')
         if result.returncode != 0 or not os.path.exists(pdf_path):
-            raise RuntimeError(f'PDF 변환 실패: {result.stderr.decode()[:200]}')
+            raise RuntimeError(f'PDF 변환 실패: {result.stderr.decode()[:300]}')
         with open(pdf_path, 'rb') as f:
             return io.BytesIO(f.read())
 
@@ -319,6 +319,23 @@ def sample():
     return send_file(SAMPLE_XLSX_PATH, as_attachment=True,
                      download_name='Form_I_입력양식_샘플.xlsx',
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+@app.route('/debug')
+def debug():
+    """LibreOffice 경로 확인용"""
+    import json
+    info = {}
+    try:
+        lo = get_libreoffice()
+        info['libreoffice_path'] = lo
+        r = subprocess.run([lo, '--version'], capture_output=True, timeout=10)
+        info['version'] = r.stdout.decode().strip()
+    except Exception as e:
+        info['error'] = str(e)
+    # nix store 탐색
+    matches = glob.glob('/nix/store/*/bin/libreoffice') + glob.glob('/nix/store/*/bin/soffice')
+    info['nix_matches'] = matches[:5]
+    return Response(json.dumps(info, indent=2), mimetype='application/json')
 
 @app.route('/generate', methods=['POST'])
 def generate():
