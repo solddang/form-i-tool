@@ -160,13 +160,13 @@ textarea:focus { border-color: #1a56db; box-shadow: 0 0 0 3px rgba(26,86,219,0.1
       <button class="fmt-btn" id="fmt-pdf" onclick="setFmt('pdf')">📕 PDF</button>
     </div>
   </div>
-  <label class="field-label" for="inp">번호 + Category + 품목 설명 목록</label>
-  <textarea id="inp" placeholder="샘플 엑셀에서 NO. / Category / Description 세 열을 복사해서 붙여넣으세요.
+  <label class="field-label" for="inp">번호 + INV NO + Category + 품목 설명 목록</label>
+  <textarea id="inp" placeholder="샘플 엑셀에서 NO. / INV NO / Category / Description 네 열을 복사해서 붙여넣으세요.
 
-1	PRESS TOOL	PRESS TOOL FOR BRKT-DR SCUFF MTG NO.1 ...
-2	CHECKING FIXTURE	CHECKING FIXTURE FOR PLATE-FR BUMPER ...
-3	JIG	W15 FRT L/ARM REINF WELDING JIG"></textarea>
-  <div class="hint">탭으로 구분된 세 열 (번호 / Category / 품목명) · 엑셀에서 세 열 선택 후 복사 붙여넣기</div>
+1	HS2026-05-302P	PRESS TOOL	PRESS TOOL FOR BRKT-DR SCUFF MTG NO.1 ...
+2	HS2026-05-302P	CHECKING FIXTURE	CHECKING FIXTURE FOR PLATE-FR BUMPER ...
+3	HS2026-05-302P	JIG	W15 FRT L/ARM REINF WELDING JIG"></textarea>
+  <div class="hint">탭으로 구분된 네 열 (번호 / INV NO / Category / 품목명) · 엑셀에서 네 열 선택 후 복사 붙여넣기</div>
   <button class="btn btn-parse" onclick="parse()">목록 확인</button>
   <div class="preview-wrap" id="preview-wrap">
     <div class="preview-top">
@@ -203,12 +203,13 @@ function parse() {
   lines.forEach((l, i) => {
     const t = l.trim(); if (!t) return;
     const parts = t.split('\\t');
-    if (parts.length >= 3) {
+    if (parts.length >= 4) {
       const no = parts[0].trim();
-      const cat = parts[1].trim().toUpperCase();
-      const desc = parts.slice(2).join('\\t').trim();
-      if (/^\\d+$/.test(no) && ['CHECKING FIXTURE','PRESS TOOL','JIG'].includes(cat) && desc)
-        ok.push({ no: parseInt(no), cat, desc });
+      const inv = parts[1].trim();
+      const cat = parts[2].trim().toUpperCase();
+      const desc = parts.slice(3).join('\\t').trim();
+      if (/^\\d+$/.test(no) && inv && ['CHECKING FIXTURE','PRESS TOOL','JIG'].includes(cat) && desc)
+        ok.push({ no: parseInt(no), inv, cat, desc });
       else bad.push(i + 1);
     } else bad.push(i + 1);
   });
@@ -219,13 +220,13 @@ function parse() {
   badge.textContent = ok.length + '개';
   badge.className = 'badge ' + (bad.length ? 'warn' : 'ok');
   list.innerHTML = ok.map(it =>
-    `<div class="p-row"><span class="p-no">${it.no}</span><span>${CAT_BADGE[it.cat]||it.cat}</span><span class="p-desc">${xesc(it.desc)}</span></div>`
+    `<div class="p-row"><span class="p-no">${it.no}</span><span>${CAT_BADGE[it.cat]||it.cat}</span><span class="p-desc"><span style="color:#6b7280;margin-right:6px">[${it.inv}]</span>${xesc(it.desc)}</span></div>`
   ).join('') + (bad.length ? `<div class="p-row err-row"><span class="p-err">⚠ ${bad.length}줄 인식 실패 — Category 확인 필요</span></div>` : '');
   document.getElementById('btn-one').disabled = ok.length === 0;
   document.getElementById('btn-zip').disabled = ok.length === 0;
   setStatus(ok.length ? ok.length + '개 항목 준비됨' : '', ok.length ? 'ok' : '');
 }
-function fname(no) { return `FormI_HS2026-05-302P_NO ${String(no).padStart(3,'0')}.${fmt==='pdf'?'pdf':'docx'}`; }
+function fname(no, inv) { return `FormI_${inv}_NO ${String(no).padStart(3,'0')}.${fmt==='pdf'?'pdf':'docx'}`; }
 function setStatus(msg, cls) { const e=document.getElementById('status'); e.textContent=msg; e.className='status '+(cls||''); }
 function setProgress(pct) { const p=document.getElementById('prog'); p.style.display=(pct>0&&pct<100)?'block':'none'; document.getElementById('prog-fill').style.width=pct+'%'; }
 function lock(v) { document.getElementById('btn-one').disabled=v; document.getElementById('btn-zip').disabled=v; }
@@ -235,11 +236,11 @@ async function genOne() {
   try {
     for (let i=0; i<items.length; i++) {
       const {no,cat,desc} = items[i];
-      const r = await fetch('/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({no,cat,desc,fmt})});
+      const r = await fetch('/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({no,inv:items[i].inv,cat,desc,fmt})});
       if (!r.ok) throw new Error(await r.text());
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href=url; a.download=fname(no); a.click();
+      const a = document.createElement('a'); a.href=url; a.download=fname(no, items[i].inv); a.click();
       URL.revokeObjectURL(url);
       setProgress(10 + Math.round((i+1)/items.length*85));
       await new Promise(r => setTimeout(r, 300));
@@ -340,13 +341,13 @@ def debug():
 @app.route('/generate', methods=['POST'])
 def generate():
     data = request.json
-    no, cat, desc, fmt = int(data['no']), data['cat'], data['desc'], data.get('fmt', 'docx')
+    no, inv, cat, desc, fmt = int(data['no']), data.get('inv',''), data['cat'], data['desc'], data.get('fmt', 'docx')
     docx_buf = build_docx(desc, cat)
     if fmt == 'pdf':
         pdf_buf = docx_to_pdf(docx_buf)
-        fname = f"FormI_HS2026-05-302P_NO {no:03d}.pdf"
+        fname = f"FormI_{inv}_NO {no:03d}.pdf"
         return send_file(pdf_buf, as_attachment=True, download_name=fname, mimetype='application/pdf')
-    fname = f"FormI_HS2026-05-302P_NO {no:03d}.docx"
+    fname = f"FormI_{inv}_NO {no:03d}.docx"
     return send_file(docx_buf, as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
 
@@ -357,13 +358,13 @@ def generate_zip():
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zout:
         for item in items:
-            no, cat, desc = int(item['no']), item['cat'], item['desc']
+            no, inv, cat, desc = int(item['no']), item.get('inv',''), item['cat'], item['desc']
             docx_buf = build_docx(desc, cat)
             if fmt == 'pdf':
                 pdf_buf = docx_to_pdf(docx_buf)
-                zout.writestr(f"FormI_HS2026-05-302P_NO {no:03d}.pdf", pdf_buf.read())
+                zout.writestr(f"FormI_{inv}_NO {no:03d}.pdf", pdf_buf.read())
             else:
-                zout.writestr(f"FormI_HS2026-05-302P_NO {no:03d}.docx", docx_buf.read())
+                zout.writestr(f"FormI_{inv}_NO {no:03d}.docx", docx_buf.read())
     zip_buf.seek(0)
     return send_file(zip_buf, as_attachment=True, download_name='FormI_HS2026-05-302P_ALL.zip',
                      mimetype='application/zip')
